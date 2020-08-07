@@ -103,6 +103,12 @@ namespace ts {
         resultFromCache?: ResolvedModuleWithFailedLookupLocations;
     }
 
+    type NodeSpecifierFallback = string[];
+
+    interface NodeExportsSpecifier {
+        [key: string]: string | NodeExportsSpecifier | NodeSpecifierFallback;
+    }
+
     /** Just the fields that we use for module resolution. */
     interface PackageJsonPathFields {
         typings?: string;
@@ -110,6 +116,7 @@ namespace ts {
         typesVersions?: MapLike<MapLike<string[]>>;
         main?: string;
         tsconfig?: string;
+        exports?: NodeExportsSpecifier;
     }
 
     interface PackageJson extends PackageJsonPathFields {
@@ -214,6 +221,16 @@ namespace ts {
 
         return result;
     }
+
+    /*
+    function matchPackageExports(jsonContent: PackageJson, baseDirectory: string, state: ModuleResolutionState): string | undefined {
+        const packageExports: NodeExportsSpecifier | undefined = readPackageJsonField(jsonContent, "exports", "object", state);
+        if (packageExports === undefined) {
+            return;
+        }
+
+    }
+    */
 
     let typeScriptVersion: Version | undefined;
 
@@ -1138,6 +1155,7 @@ namespace ts {
         packageDirectory: string;
         packageJsonContent: PackageJsonPathFields;
         versionPaths: VersionPaths | undefined;
+        exports: NodeExportsSpecifier | undefined;
     }
 
     function getPackageJsonInfo(packageDirectory: string, onlyRecordFailures: boolean, state: ModuleResolutionState): PackageJsonInfo | undefined {
@@ -1150,7 +1168,8 @@ namespace ts {
                 trace(host, Diagnostics.Found_package_json_at_0, packageJsonPath);
             }
             const versionPaths = readPackageJsonTypesVersionPaths(packageJsonContent, state);
-            return { packageDirectory, packageJsonContent, versionPaths };
+            const exports = readPackageJsonField(packageJsonContent, "exports", "object", state);
+            return { packageDirectory, packageJsonContent, versionPaths, exports };
         }
         else {
             if (directoryExists && traceEnabled) {
@@ -1351,6 +1370,24 @@ namespace ts {
                 const fromPaths = tryLoadModuleUsingPaths(extensions, rest, packageDirectory, packageInfo.versionPaths.paths, loader, !packageDirectoryExists, state);
                 if (fromPaths) {
                     return fromPaths.value;
+                }
+            }
+            if (packageInfo && packageInfo.exports) {
+                // TODO: trace
+
+                // TODO: environment matching
+                // TODO: module/require matching
+                // does the module name match an export name?
+                const matchingExport: string | undefined = Object.keys(packageInfo.exports).find((exportedPath) => {
+                    return exportedPath.indexOf("./" + rest) === 0;
+                });
+                if (matchingExport) {
+                    const exportSpecifier = packageInfo.exports[matchingExport];
+                    // try following the specifier from the package root
+                    if (typeof exportSpecifier === "string" && exportSpecifier.indexOf("./") === 0) {
+                        const exportCandidate = packageDirectory + exportSpecifier.substring(1);
+                        return loader(extensions, exportCandidate, !nodeModulesDirectoryExists, state);
+                    }
                 }
             }
         }

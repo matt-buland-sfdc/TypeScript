@@ -381,6 +381,7 @@ namespace ts.moduleSpecifiers {
                 }
 
                 // If the file is the main module, it can be imported by the package name
+                console.log("Matt: main is: " + packageJsonContent.main);
                 const mainFileRelative = packageJsonContent.typings || packageJsonContent.types || packageJsonContent.main;
                 if (isString(mainFileRelative)) {
                     const mainExportFile = toPath(mainFileRelative, packageRootPath, getCanonicalFileName);
